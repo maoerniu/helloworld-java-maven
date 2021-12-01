@@ -1,0 +1,86 @@
+# This is a basic workflow to help you get started with Actions
+
+name: BMI CI Pipeline with Maven
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the master branch
+  push:
+    branches:
+      - master
+  pull_request:
+    types: [opened, synchronize, reopened] 
+      
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build_job:
+    # The type of runner that the job will run on
+    name: 持续构建
+    runs-on: ubuntu-latest
+  
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+
+      # 设置JDK环境配置
+      - name: Set up JDK 11
+        uses: actions/setup-java@v2
+        with:
+          java-version: '11'
+          distribution: 'adopt'
+          cache: maven
+      
+      # 运行SonarCloud扫描
+      - name: Cache SonarCloud packages
+        uses: actions/cache@v1
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+          
+      - name: Cache Maven packages
+        uses: actions/cache@v1
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2
+          
+      - name: Build and analyze
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: mvn clean install -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=craigyoung2016_pluto
+    
+      - name: Upload a Build Artifact
+        uses: actions/upload-artifact@v2.2.4
+        with:
+          # Artifact name
+          path: 
+            './*'
+    
+      - name: 'Deployment to Production Environment on Alibaba Cloud'
+        # You may pin to the exact commit or the version.
+        uses: marcodallasanta/ssh-scp-deploy@v1.1.0
+        with:
+          # Local file path
+          local: './*'
+          # Remote file path
+          remote: '~/yyzone/'
+          # Remote server address
+          host: ${{ secrets.ALIYUN_HOST }}
+          # Remote server user
+          user: ${{ secrets.ALIYUN_USER }}
+          # Remote server private key
+          key: ${{ secrets.ALIYUN_SERVER_ACCESS_TOKEN }}
+          # Command to run via ssh after scp upload
+          post_upload: echo "This will be executed after the upload!"
+          # - ssh ${{ secrets.ALIYUN_USER }}@${{ secrets.ALIYUN_PASSWORD }} "cd /home/dxy/yyzone/deploy && ./deploy.sh ../bmicalculator-0.0.1-SNAPSHOT.jar"
+          # ssh_options: -o StrictHostKeyChecking=no -o UserKnownHostsFile=~/.ssh/known_hosts
+          scp_options: -v
